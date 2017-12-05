@@ -1,0 +1,81 @@
+/*
+PetriNet model based on 15909-2 (short pnml)
+	pnml is an exchange format with no focus on semantic but with strong
+		focus to support different Petri net types
+When possible our model will conform to the pnml-metamodel
+	Differences:
+		- simplification
+			- no PetriNetDoc
+			- no ToolInfo
+			- no Graphic information
+			- no initial marking edge
+			- nothing from High Level Nets (HLPNGs)
+			- no reference nodes/places/transitions
+		- Other kind of modelling
+			- Arc is an edge instead of node
+				- two kinds of arcs (in, out) to enforce bipartite rule
+			- nodes for Label,Name are modeled by attributes
+		- additionally
+			- Tokens explicit as nodes (pnml just has an initial marking)
+			- PriorityTransition
+				- as opposed to model everything as label, I model everything as new subclass
+			- inhibitorArc
+*/
+
+node class PetriNet extends NIdent;
+
+node class Page extends NIdent;
+
+node class PetriNetNode extends NIdent;
+
+node class PlaceNode extends PetriNetNode;
+node class Place extends PlaceNode;
+
+node class TransitionNode extends PetriNetNode;
+node class Transition extends TransitionNode;
+
+node class PriorityTransition extends Transition {
+	priority: int = 0;
+}
+
+node class Token;
+
+directed edge class pages
+	connect PetriNet[*] --> Page[0:1],
+	        Page[*]     --> Page[0:1];
+
+// directed edge class pnodes;
+
+abstract directed edge class transitions_places;
+
+directed edge class places extends transitions_places
+	connect Page --> PlaceNode[1];
+
+directed edge class transitions extends transitions_places
+	connect Page --> TransitionNode[1];
+
+directed edge class tokens
+	connect PlaceNode --> Token[0:1];
+
+// the arcs
+abstract directed edge class Arc extends EIdent {
+	weight:int = 1;
+}
+
+edge class inArc extends Arc
+	connect TransitionNode --> PlaceNode;
+
+edge class outArc extends Arc
+	connect PlaceNode --> TransitionNode;
+
+edge class inhibitorArc extends Arc
+	connect PlaceNode --> TransitionNode;
+
+
+node class RefPlace extends PlaceNode;
+node class RefTransition extends TransitionNode;
+
+edge class edge_refplace
+	connect RefPlace[1] --> PlaceNode[*];
+edge class edge_reftransition
+	connect RefTransition[1] --> TransitionNode[*];

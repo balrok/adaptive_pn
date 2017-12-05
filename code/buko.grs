@@ -1,0 +1,155 @@
+new graph "../allinone/Rules.grg"
+
+include ../petri/layout.grsi
+include layout.grsi
+
+new pn:PetriNet(id="Petri Net Bukowiec")
+
+new main:Page(id="main")
+new pn -:pages-> main
+
+new p1:Place(id="p1")
+new p3:Place(id="p3")
+new p6:Place(id="p6")
+new p7:Place(id="p7")
+new p8:Place(id="p8")
+new p9:Place(id="p9")
+new p11:Place(id="p11")
+new p12:Place(id="p12")
+new p82:Place(id="p82")
+new p92:Place(id="p92")
+new ptemp:Place(id="ptemp")
+new ptemp2:Place(id="ptemp2")
+
+new main-:places->p1
+new main-:places->p3
+new main-:places->p6
+new main-:places->p7
+new main-:places->p11
+new main-:places->ptemp
+new main-:places->ptemp2
+new main-:places->p8
+new main-:places->p9
+new main-:places->p82
+new main-:places->p92
+new main-:places->p12
+
+new t2:Transition(id="t2")
+new t5:Transition(id="t5")
+new t6:Transition(id="t6")
+new t8:Transition(id="t8")
+new t9:Transition(id="t9")
+new t10:Transition(id="t10")
+new t92:Transition(id="t92")
+new ttemp:Transition(id="ttemp")
+new ttemp1:Transition(id="ttemp1")
+new ttemp2:Transition(id="ttemp2")
+
+new main-:transitions->t2
+new main-:transitions->t5
+new main-:transitions->t6
+new main-:transitions->t8
+new main-:transitions->ttemp
+new main-:transitions->ttemp1
+new main-:transitions->ttemp2
+
+new main-:transitions->t9
+new main-:transitions->t10
+new main-:transitions->t92
+
+
+new p1-:outArc->t2
+new p3-:outArc->t2
+new p6-:outArc->t5
+new p7-:outArc->t6
+#new p8-:outArc->t
+new p9-:outArc->t9
+new p11-:outArc->t8
+new p12-:outArc->t10
+new p92-:outArc->t92
+new p8-:outArc->ttemp1
+new p82-:outArc->ttemp2
+new ttemp1-:inArc->ptemp2
+new ttemp2-:inArc->ptemp2
+new ptemp2 -:outArc->t6
+
+
+new t5-:inArc->p1
+new t8-:inArc->p3
+new t2-:inArc->p6
+new t5-:inArc->p7
+new t6-:inArc->p11
+new t9-:inArc->p8
+new t92-:inArc->p82
+new t10-:inArc->p92
+new t8-:inArc->ptemp
+new ptemp-:outArc->ttemp
+new ttemp-:inArc->p9
+new ttemp-:inArc->p12
+
+
+
+new tok1:Token
+new tok2:Token
+new tok3:Token
+
+new p1-:tokens->tok1
+new p3-:tokens->tok2
+new ptemp-:tokens->tok3
+
+
+
+new cfg_net:Place(id="cfg_net")
+new main-:places->cfg_net
+new t_net1:Transition(id="t_net1")
+new t_net2:Transition(id="t_net2")
+new main-:transitions->t_net1
+new main-:transitions->t_net2
+new cfg_net -:outArc-> t_net2
+new cfg_net -:inhibitorArc-> t_net1
+new t_net1 -:inArc-> cfg_net
+
+new :dyn2::ConfStructure($ = "$5F", activates = False, weight = 1)
+new :dyn2::ConfStructure($ = "$5A", activates = True, weight = 1)
+new @("$5F") - :dyn2::interface_nodes-> ttemp
+new @("$5F") - :dyn2::interface_nodes-> ptemp2
+new @("$5F") - :dyn2::internal_nodes-> t10
+new @("$5F") - :dyn2::internal_nodes-> p92
+new @("$5F") - :dyn2::internal_nodes-> t92
+new @("$5F") - :dyn2::internal_nodes-> p82
+new @("$5F") - :dyn2::internal_nodes-> p12
+new @("$5F") - :dyn2::internal_nodes-> ttemp2
+new @("$5F") - :dyn2::confplace-> cfg_net
+
+new @("$5A") - :dyn2::interface_nodes-> ttemp
+new @("$5F") - :dyn2::interface_nodes-> ptemp2
+new @("$5A") - :dyn2::internal_nodes-> t9
+new @("$5A") - :dyn2::internal_nodes-> p8
+new @("$5A") - :dyn2::internal_nodes-> p9
+new @("$5A") - :dyn2::internal_nodes-> ttemp1
+new @("$5A") - :dyn2::confplace-> cfg_net
+
+
+validate exitonfailure strict only specified
+export paper_orig.grsi
+#exec dyn12r::Convert()
+#exec pdFlatten(::pn)
+exec dyn2r::flatten()
+exec PetrinetCleanup()*
+exec id_unique()
+validate exitonfailure strict only specified
+export paper_flati.grsi
+validate exitonfailure strict only specified
+
+
+exec TransformMultiArcsToWeight()*
+exec Init(1)
+exec ToPTNet()* | [InfoInhibitors()] | CheckError()
+validate exitonfailure strict only specified
+
+
+exec id_replace_lola()
+
+export paper_flat.grsi
+show graph ycomp
+exit

@@ -1,0 +1,582 @@
+rule fireRuleAll() {
+	pn:PetriNet;
+	modify {
+		exec(fireRulePetriNet(pn));
+	}
+}
+
+rule fireRulePetriNet(pn:PetriNet) {
+	pn -:pages-> net:Page;
+	// iteriere alle pages und feuere dann
+	modify {
+		exec(fireRulePage(net));
+	}
+}
+
+// TODO a method isFirable() would be better
+// efficient implementation of priority transitions: http://ceur-ws.org/Vol-723/paper3.pdf
+// go from highest priority down to lowest
+
+rule fireRulePage(net:Page) {
+	modify {
+		// | is not lazy
+		// | only one rule needs to succeed for the whole rule to be marked as success
+		// TODO fire priority until nothing will fire there anymore.. only then fireRuleNormal
+		// e.g. after firing 2 jump back to 1 in case 1 can fire again
+		exec(for{z:int in [1:3]; [fireRulePriority(net, z)] });
+		exec([fireRuleNormal(net)]);
+	}
+}
+
+pattern pisFirable(t:TransitionNode) {
+	// there should be no place before the transition with less tokens than weight on outarc
+	negative {
+		t <-o:outArc- pEmpty:Place;
+		if { o.weight > countBoundedReachableOutgoing(pEmpty, 1, tokens); }
+	}
+	// if there is a place with more or equal tokens than the weight of the inhibitor - don't fire
+	negative {
+		t <-i:inhibitorArc- pFilled:Place;
+		if { i.weight <= countBoundedReachableOutgoing(pFilled, 1, tokens); }
+	}
+}
+rule isFirable(t:TransitionNode) {
+	:pisFirable(t);
+}
+rule fireRuleNormal(net:Page)
+{
+	// select a transition
+	net -ts:transitions-> t:TransitionNode \ PriorityTransition;
+	:pisFirable(t);
+
+	// otherwise we can emit and consumeTokens
+	modify {
+		emit("fire ",t.id, " normally\n");
+		exec( [emitTokens(t)] && [consumeTokens(t)] );
+	}
+}
+rule fireRulePriority(net:Page, var priority:int)
+{
+	net -:transitions-> t:PriorityTransition;
+	if (t.priority == priority);
+	:pisFirable(t);
+
+	// otherwise we can emit and consumeTokens
+	modify {
+		emit("fire ",t.id, " with priority ",priority,"\n");
+		exec( [emitTokens(t)] | [consumeTokens(t)] );
+	}
+}
+
+rule emitTokens(t:TransitionNode)
+{
+	t -i:inArc-> p:Place;
+
+	modify {
+		def var amount:int = i.weight;
+		emit("emit tokens to ",p.id,"\n");
+		exec(
+			for{z:int in [1:amount]; AddToken(p)}
+		);
+	}
+}
+
+test hasToken(p:PlaceNode) {
+	p -:tokens->;
+}
+
+rule AddToken(p:PlaceNode) {
+	modify {
+		p -:tokens-> :Token;
+	}
+}
+
+rule consumeTokens(t:TransitionNode) {
+	t <-o:outArc- p:Place;
+	modify {
+		def var amount:int = o.weight;
+		emit("delete tokens in ",p.id,"\n");
+		exec(
+			for{z:int in [1:amount]; DeleteToken(p)}
+		);
+	}
+}
+
+rule DeleteToken(p:PlaceNode) {
+	p -:tokens-> :Token;
+	replace { p; }
+}
+
+rule countTokens(p:PlaceNode) : (int) {
+	iterated {
+		p -:tokens-> :Token;
+		modify {
+			eval{ yield counter = counter +1; }
+		}
+	}
+	modify {
+		def var counter:int = 0;
+		return (counter);
+	}
+}
+
+rule ComposeAll() {
+	pn1:PetriNet;
+	iterated {
+		pn2:PetriNet;
+		modify {
+			exec(ComposePetrinets(pn1, pn2));
+		}
+	}
+	modify {
+		exec(ComposeAllPages(pn1));
+		exec(composition_page(pn1));
+	}
+}
+
+rule ComposePetrinets(pn1:PetriNet, pn2:PetriNet) {
+	iterated {
+		pn2 -:pages-> net:Page;
+		modify {
+			pn1 -:pages-> net;
+		}
+	}
+	modify {
+		delete(pn2);
+	}
+}
+
+rule ComposeAllPages(pn:PetriNet) {
+	pn -:pages-> net1:Page;
+	iterated {
+		pn -:pages-> net2:Page;
+		modify {
+			exec(ComposePages(net1, net2));
+		}
+	}
+}
+/*
+Petrinet Composition on page level
+Will copy all places and transitions from p2 to p1
+and combine them based on their id
+*/
+rule ComposePages(p1:Page, p2:Page) {
+	modify {
+		exec(moveFromPage(p1, p2));
+		exec(ComposePage(p1));
+	}
+}
+
+rule ComposePage(net:Page) {
+	modify {
+		exec([composition_node_wildcard(net)]
+			| composition_node(net)*
+			| composition_edge(net)* );
+	}
+}
+
+rule ComposeAllWildCards() {
+    iterated {
+        net:Page;
+        modify {
+            exec([composition_node_wildcard(net)]);
+        }
+    }
+    modify {}
+}
+
+rule composition_node_wildcard(net:Page) {
+	p2:NIdent;
+	net -e2:Edge-> p2;
+	if { p2.id.indexOf("*") >= 0; }
+	iterated {
+		net -e1:Edge-> p1:NIdent;
+		if { typeof(e1) == typeof(e2); }
+		if {
+			p1.id.startsWith(p2.id.substring(0, p2.id.indexOf("*"))) &&
+			p1.id.endsWith(p2.id.substring(p2.id.indexOf("*")+1, p2.id.length() - p2.id.indexOf("*")-1));
+		}
+		modify {
+			exec(copyArcsExclude(p2, p1, net));
+			eval{ yield counter = counter +1; }
+		}
+	}
+	modify {
+		def var counter:int = 0;
+		emit("wildcard replaced ",counter," for ",p2.id,"\n");
+		exec(if{ {{counter > 0}}; delete_node(p2); remove_wildcard(p2)});
+	}
+}
+
+rule remove_wildcard(a:NIdent) {
+	modify {
+		//eval { a.id = a.id.replace(a.id.indexOf("*"), 1, "+"); }
+	}
+}
+
+// composition matches the Type and label,
+// then rewrites all incoming and outgoin edges to a new node
+// grgen manual 10.6 Node Merging
+// TODO I might later split it up to transition/Place for merging the marking etc.
+rule composition_node(net:Page) {
+	p1:NIdent;
+	p2:NIdent;
+	net -e1:Edge-> p1;
+	net -e2:Edge-> p2;
+	if { typeof(e1) == typeof(e2); }
+	if { p1.id == p2.id && p1.id != ""; }
+	modify {
+		delete(e1);
+		emit("Found two nodes with the same id and type\n");
+		emit(p1.id + "  --  " + p2.id +"\n");
+		emit(p1, "  --  ", p2, "\n");
+		new_p:typeof(p1)<p1,p2>;
+		emit("new node: ", new_p, "\n");
+		eval{new_p.id = p1.id;}
+		emit("Done\n");
+	}
+}
+
+rule composition_page(net:PetriNet) {
+	net -e:pages-> p1:Page;
+	net -:pages-> p2:Page;
+	if { p1.id == p2.id && p1.id != ""; }
+	modify {
+		emit("Found two pages with the same id and type\n");
+		emit(p1.id + "  --  " + p2.id +"\n");
+		emit(p1, "  --  ", p2, "\n");
+		new_p:typeof(p1)<p1,p2>;
+		emit("new node: ", new_p, "\n");
+		eval{new_p.id = p1.id;}
+		emit("Done\n");
+		delete(e);
+	}
+}
+
+// composition edge will delete double edges an edge which exists twice with same source and target
+// TODO here two edges mean weight == 2
+rule composition_edge(net:Page) {
+	n1:NIdent -e1:Arc-> n2:NIdent;
+	n1 -e2:Arc-> n2;
+	if { e1.id == e2.id && typeof(e1) == typeof(e2); }
+	modify {
+		emit("composition_edges: Found two edges with the same id, type, source and target\n");
+		emit(n1.id + "  -",typeof(e1),"-  " + n2.id +"\n");
+		emithere("deleting ",e2,"\n");
+		delete(e2);
+	}
+}
+
+/*
+	Will move all items from net to topnet
+	then delete p2
+*/
+rule moveFromPage(topnet:Page, net:Page) {
+	iterated {
+		net -e:Edge->;
+		modify { topnet !-e->; }
+	}
+	modify { delete(net); }
+}
+
+rule PetrinetCleanup() {
+	alternative {
+		page {
+			n:PetriNet -:pages-> p:Page;
+			n -e:pages-> p;
+			modify {
+				emit("CLEANUP WARNING: page ",p.id," had multiple pages arcs\n");
+				delete(e);
+			}
+		}
+		transition {
+			p:Page -:transitions-> t:TransitionNode;
+			-e:transitions-> t;
+			modify {
+				emit("CLEANUP WARNING: transition ",t.id," had multiple transitions arcs\n");
+				delete(e);
+			}
+		}
+		place {
+			p:Page -:places-> pl:PlaceNode;
+			-e:places-> pl;
+			modify {
+				emit("CLEANUP WARNING: place ",pl.id," had multiple places arcs\n");
+				delete(e);
+			}
+		}
+		unconnected_place {
+			pl:PlaceNode;
+			p:Page;
+			negative {
+				-:places-> pl;
+			}
+			modify {
+				emit("CLEANUP WARNING: place ",pl.id," is not connected to any page - connecting to random chosen page ",p.id,"\n");
+				p -:places-> pl;
+			}
+		}
+		unconnected_transition {
+			t:TransitionNode;
+			p:Page;
+			negative {
+				-:transitions-> t;
+			}
+			modify {
+				emit("CLEANUP WARNING: transition ",t.id," is not connected to any page - connecting to random chosen page ",p.id,"\n");
+				p -:transitions-> t;
+			}
+		}
+		unconnected_page {
+			p:Page;
+			n:PetriNet;
+			negative {
+				-:pages-> p;
+			}
+			modify {
+				emit("CLEANUP WARNING: page ",p.id," is not connected to any petrinet - connecting to random chosen net ",n.id,"\n");
+				n -:pages-> p;
+			}
+		}
+		standalone_place {
+			pl:PlaceNode;
+			p:Page -e:places-> pl;
+			// any place without incoming or outgoing edges
+			negative {
+				-e->;
+				-:Edge->pl;
+			}
+			negative {
+				pl-x:Edge->;
+				// ignore outging edges which are tokens
+				negative { -:tokens<x>->; }
+			}
+			modify {
+				emit("CLEANUP WARNING: place ",pl.id," is not connected to anything besides the page\n");
+				exec(
+					DeleteToken(pl)*
+					| delete_node(pl)
+				);
+			}
+		}
+		standalone_transition {
+			t:TransitionNode;
+			p:Page -e:transitions-> t;
+			negative {
+				-e->;
+				-:Edge->t;
+			}
+			negative {
+				t-:Edge->;
+			}
+			modify {
+				emit("CLEANUP WARNING: transition ",t.id," is not connected to anything besides the page\n");
+				delete(t);
+			}
+		}
+		blocked_transition {
+			p:PlaceNode -:inhibitorArc-> t:TransitionNode;
+			p -:outArc-> t;
+			modify {
+				emit("CLEANUP WARNING: transition ",t.id," is inhibited+connected at same time - will never fire..\n");
+				delete(t);
+			}
+		}
+	}
+}
+
+rule deleteAllOutgoingArcs(p:PlaceNode) : (int) {
+	iterated {
+		p -e:outArc-> t:TransitionNode;
+		modify {
+			emit("delete arc ",p.id," -> ",t.id,"\n");
+			eval{ yield counter = counter +1; }
+			delete(e);
+		}
+	}
+	modify {
+		def var counter:int = 0;
+		return (counter);
+	}
+}
+
+// this is a bad rule - it will just replace it.. no semantics saved
+rule ReplacePriority() {
+	t:PriorityTransition;
+	replace {
+		new:Transition<t>;
+	}
+}
+
+rule GetPlaceById(pn:PetriNet, var myId:string) : (PlaceNode) {
+	p:PlaceNode;
+	if {p.id == myId;}
+	if {isReachableOutgoing(pn, p);}
+	modify {
+		return(p);
+	}
+}
+
+rule copyPetriArcsNegatedInclude(from:TransitionNode, to:TransitionNode, include:PlaceNode)  {
+	iterated {
+		// iterate over all inarc and outarc connections
+		alternative {
+			outArc {
+				include -e:outArc-> from;
+				modify {
+					// emit("copy inarc ",from," ",other,"\n");
+					include -:inhibitorArc-> to;
+				}
+			}
+			inhibitorArc {
+				include -e:inhibitorArc-> from;
+				modify {
+					// emit("copy inarc ",from," ",other,"\n");
+					include -:outArc-> to;
+				}
+			}
+			inArc {
+				include <-oe:inArc- from;
+				modify {
+					// emit("copy outarc ",from," ",other,"\n");
+					include <-:inArc- to;
+				}
+			}
+		}
+		modify {}
+	}
+	modify {}
+}
+
+rule TransformMultiArcsToWeight() {
+	alternative {
+		inarc {
+			t:Transition -e1:inArc-> p:Place;
+			t -e2:inArc-> p;
+			modify {
+				emit("Multiarc between ",p.id," and ",t.id,"\n");
+				evalhere {e1.weight = e1.weight + e2.weight;}
+				delete(e2);
+			}
+		}
+		outarc {
+			t:Transition <-e1:outArc- p:Place;
+			t <-e2:outArc- p;
+			modify {
+				emit("Multiarc between ",p.id," and ",t.id,"\n");
+				evalhere {e1.weight = e1.weight + e2.weight;}
+				delete(e2);
+			}
+		}
+		inhibitorarc {
+			t:Transition <-e1:inhibitorArc- p:Place;
+			t <-e2:inhibitorArc- p;
+			modify {
+				emit("Multiarc between ",p.id," and ",t.id,"\n");
+				evalhere {e1.weight = e1.weight + e2.weight;}
+				delete(e2);
+			}
+		}
+	}
+}
+
+rule ConnectSamePage(n:NIdent, referencenode:NIdent) {
+	net:Page -e:Edge-> referencenode;
+	alternative {
+		pl {
+			:PlaceNode<n>;
+			modify { net -:places-> n; }
+		}
+		tr {
+			:TransitionNode<n>;
+			modify { net -:transitions-> n; }
+		}
+	}
+}
+rule ConnectOutArc(p:PlaceNode, t:TransitionNode) {
+	modify { p-:outArc->t;}
+}
+rule ConnectOutArcW(p:PlaceNode, t:TransitionNode, var weight:int) {
+	modify { p-a:outArc->t; eval{a.weight=weight;}}
+}
+rule ConnectInArc(p:PlaceNode, t:TransitionNode) {
+	modify { t-:inArc->p;}
+}
+rule ConnectInArcW(p:PlaceNode, t:TransitionNode, var weight:int) {
+	modify { t-a:inArc->p; eval{a.weight=weight;}}
+}
+rule ConnectInOutArc(p:PlaceNode, t:TransitionNode) {
+	modify { t-:inArc->p; p-:outArc->t;}
+}
+rule ConnectInOutArcW(p:PlaceNode, t:TransitionNode, var weight:int) {
+	modify { exec(ConnectInArcW(p,t,weight)|ConnectOutArcW(p,t,weight)); }
+}
+rule ConnectInhibitorArc(p:PlaceNode, t:TransitionNode) {
+	modify { p-:inhibitorArc->t;}
+}
+rule ConnectInhibitorArcW(p:PlaceNode, t:TransitionNode, var weight:int) {
+	modify { p-a:inhibitorArc->t; eval{a.weight=weight;}}
+}
+rule CreatePlace(net:Page, var id:string) : (Place) {
+	modify {
+		net -:places-> pl:Place;
+		eval{pl.id = id;}
+		return(pl);
+	}
+}
+rule CreateTransition(net:Page, var id:string) : (Transition) {
+	modify {
+		net -:transitions-> tr:Transition;
+		eval{tr.id = id;}
+		return(tr);
+	}
+}
+
+rule id_unique() {
+	modify {
+		exec([_id_unique(map<string, int>{})]);
+		// call it multiple times to increase the likelyhood of having all ids unique
+		//exec([_id_unique(map<string, int>{})]);
+	}
+}
+rule _id_unique(ref id_to_int:map<string, int>) {
+	n:PetriNetNode;
+
+	modify {
+		def var c:int = 1;
+		eval {
+			if (n.id in id_to_int) {
+				yield c = id_to_int[n.id];
+				yield c = c + 1;
+				id_to_int.add(n.id, c);
+				n.id = n.id + "_uniq_" + c;
+			} else {
+				id_to_int.add(n.id, c);
+			}
+		}
+	}
+}
+
+package pn {
+	rule DebugPrintPetriNetNode(n:PetriNetNode) {
+		modify {
+			emithere(typeof(n)," ",n.id,"(",n,")");
+			exec(
+				print(" out:")
+				| [DebugListOutNodes(n)]
+				| print(" in:")
+				| [DebugListInNodes(n)]
+			);
+		}
+	}
+
+	rule DebugListOutNodes(n:PetriNetNode) {
+		n -:Arc-> t:PetriNetNode;
+		modify { emit(t.id,","); }
+	}
+
+	rule DebugListInNodes(n:PetriNetNode) {
+		t:PetriNetNode -:Arc-> n;
+		modify { emit(t.id,","); }
+	}
+}

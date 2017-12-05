@@ -1,0 +1,35 @@
+package dyn2 {
+/**
+\begin{defs}\label{def:cp}
+    A configuration point is a tuple $c = (p, w, N, E)$ referencing the nodes of a containing Petri net $\Sigma$.
+\end{defs}
+
+\begin{itemize}
+    \item $p \in \Sigma.P$, a place which we will call \emph{configuration place}.
+    \item $w: \mathbb{N} \setminus \{0\}$, a weight which dictates when the dynamic part is enabled or disabled
+    \item $N \subseteq (\Sigma.P \cap \Sigma.T)$. The nodes of the configured part
+    \item $E \subseteq N$ the external nodes of the configured part, which are reachable, even when the configured part is disabled
+\end{itemize}
+
+My model diverges by:
+    * the naming of N - cs_nodes
+    * E - interface_nodes
+    * the helper structure N\setminus E internal_nodes
+    * weigth < 0 wil be encoded as activates=false - and weight is set to positive
+    * weigth > 0 wil be encoded as activates=true - and weight is set to positive
+**/
+    node class ConfStructure {
+        activates: boolean = true;
+        weight: int = 1;
+    }
+
+    edge class confplace
+        connect ConfStructure --> Place;
+
+    abstract edge class cs_nodes;
+
+    edge class interface_nodes extends cs_nodes
+        connect ConfStructure --> PetriNetNode;
+    edge class internal_nodes extends cs_nodes
+        connect ConfStructure --> PetriNetNode;
+}

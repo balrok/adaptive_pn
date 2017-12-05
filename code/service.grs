@@ -1,0 +1,14 @@
+new pn:PetriNet(id="service")
+new net:Page(id="service")
+new pn -:pages-> net
+
+new fork:Place(id="fork")
+new wash:Place(id="wash")
+new net -:places-> fork
+new net -:places-> wash
+
+new t1:Transition(id="t1")
+new net -:transitions-> t1
+
+new fork -:outArc-> t1
+new t1 -:inArc-> wash

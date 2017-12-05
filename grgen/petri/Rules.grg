@@ -1,0 +1,4 @@
+#using "../general/Id.gm"
+#using "../petri/PetriModel.gm"
+#include "../general/Rules.grg"
+#include "../petri/RulesWithoutModel.grg"

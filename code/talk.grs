@@ -1,0 +1,14 @@
+new pn:PetriNet(id="talk")
+new net:Page(id="talk")
+new pn -:pages-> net
+
+new think:Place(id="think")
+new talk:Place(id="talk")
+new net -:places-> think
+new net -:places-> talk
+
+new t1:Transition(id="do")
+new net -:transitions-> t1
+
+new think -:outArc-> t1
+new t1 -:inArc-> talk

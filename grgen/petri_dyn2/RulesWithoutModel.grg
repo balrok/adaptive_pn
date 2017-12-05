@@ -1,0 +1,178 @@
+package dyn2r {
+    /**
+     * The algorithm is started with flatten()
+     *
+     * Then it uses the flattening algorithm
+     */
+
+    /*public*/ rule flatten() {
+        modify {
+            exec(
+                [CheckDuplicatedConfStructures()]
+                | [FlattenConfStructure()]
+            );
+        }
+    }
+
+    rule CheckDuplicatedConfStructures() {
+        cs1:dyn2::ConfStructure -e:dyn2::confplace-> p1:Place;
+        cs2:dyn2::ConfStructure -:dyn2::confplace-> p1;
+        if {
+            cs1.activates == cs2.activates
+            && cs1.weight == cs2.weight;
+        }
+        modify {
+            emit("WARNING: duplicated confstructure with place ",p1.id," - might be a bug - or not.. who knows\n");
+        }
+    }
+
+    // Main algorithm starts here - iterate over the confstructures
+    rule FlattenConfStructure() {
+        /** \For{$\forall c \in C$} **/
+        cs:dyn2::ConfStructure -:dyn2::confplace-> cp:Place;
+        modify {
+            emit("Flatten ");
+            exec(
+                [DebugPrintConfStructure(cs)]
+                | [FlattenInterfacePlaces(cs, cp)]
+                | [FlattenInterfaceTransitions(cs, cp)]
+                | delete_node(cs)
+            );
+        }
+    }
+
+    rule FlattenInterfacePlaces(cs:dyn2::ConfStructure, cp:Place) {
+        /** \For{$\forall p \in c.E \cap P$} **/
+        cs -:dyn2::interface_nodes-> ip:Place;
+        ip -:outArc-> t:Transition;
+        independent { // independent will match without iterating over all
+	        /** \For{$\forall t \in p\bullet \cap c.N$} **/
+            cs -:dyn2::internal_nodes-> t;
+            /** \If{$t \not \in c.E$} **/
+            negative { cs -:dyn2::interface_nodes-> t; }
+        }
+        modify {
+            emit("Flatten interface place ",ip.id,"->",t.id,"\n");
+            exec(
+                /**\State{ConnectByArc(1, c, t, F, I, W)}**/
+                ConnectByArc(true, cp, t, cs)
+            );
+        }
+    }
+
+    /**
+     * interface transitions are most complex
+     * they must be duplicated, the duplicate will be disconnected from the net
+     * then it is connected negative
+     */
+    rule FlattenInterfaceTransitions(cs:dyn2::ConfStructure, cp:Place) {
+        /**\For{$\forall t \in c.E \cap T$}**/
+        cs -:dyn2::interface_nodes-> it:Transition;
+        alternative {
+	        /** \If{$t\bullet \cap c.E \neq \emptyset **/
+            receive {
+                independent { // independent will match without iterating over all
+                    externalP:Place -:outArc-> it;
+                    cs -:dyn2::interface_nodes-> externalP;
+                }
+                modify {}
+            }
+            /** \lor \bullet t \cap c.N \neq \emptyset$}**/
+            connected_with_ip {
+                independent {
+                    it -:inArc-> ip:Place;
+                    cs -:dyn2::cs_nodes-> ip;
+                }
+                modify {}
+            }
+        }
+        modify {
+            emit("Flatten Interface Transition ",it," ",it.id,"\n");
+		    /**\State{$t_2 \gets \mathit{duplicate}(t)$}**/
+            it2:copy<it>;
+            exec(
+                copyArcs(it, it2)
+                /**\State{$\bullet t_2 \gets \bullet t_2 \setminus c.E$}**/
+                /**\State{$t_2\bullet \gets t_2\bullet \setminus c.N$}**/
+                | [RemoveInternalArcs(it2, cs)]
+		        /**\State{ConnectByArc(1, c, $t$, F, I, W)}**/
+                | ConnectByArc(true, cp, it, cs)
+		        /**\State{ConnectByArc(0, c, $t_2$, F, I, W)}**/
+                | ConnectByArc(false, cp, it2, cs)
+            );
+        }
+    }
+
+    /**
+     * remove arcs to _all_ nodes of this net/page (so interface+internal)
+     */
+    rule RemoveInternalArcs(a:PetriNetNode, cs:dyn2::ConfStructure) {
+        cs -:dyn2::cs_nodes-> b:PetriNetNode;
+        alternative {
+            a1 { b -e:outArc-> a; modify {delete(e);} }
+            a2 { b -e:inArc-> a;  modify {delete(e);} }
+            a3 { a -e:outArc-> b; modify {delete(e);} }
+            a4 { a -e:inArc-> b;  modify {delete(e);} }
+        }
+        modify { }
+    }
+
+    rule ConnectByArc(var e:boolean, cp:Place, t:Transition, cs:dyn2::ConfStructure) {
+        alternative {
+            A {
+                if {(cs.activates && e) || (!cs.activates && !e);}
+                negative { cp -:outArc-> t; t-:inArc->cp; }
+                modify {
+                    exec(
+                        printPlace("inout ", cp)
+                        | pn::DebugPrintPetriNetNode(t)
+                        | print("\n")
+                        | ConnectInOutArcW(cp, t, cs.weight)
+                    );
+                }
+            }
+            B {
+                if {!((cs.activates && e) || (!cs.activates && !e));}
+                negative { cp -:inhibitorArc-> t; }
+                modify {
+                    exec(
+                        printPlace("inh ", cp)
+                        | pn::DebugPrintPetriNetNode(t)
+                        | print("\n")
+                        | ConnectInhibitorArcW(cp, t, cs.weight)
+                    );
+                }
+            }
+        }
+        modify {}
+    }
+
+    rule printPlace(var s:string, cp:Place) {
+        modify {
+            emit(s, cp);
+        }
+    }
+
+
+    rule DebugPrintConfStructure(cs:dyn2::ConfStructure) {
+        cs -:dyn2::confplace-> cp:Place;
+        modify {
+            emit("ConfStructure ",cs," confplace: ",cp.id,"(",cp,") weight:",cs.weight," act:",cs.activates,"\n");
+            exec([DebugListPlaces(cs)]);
+        }
+    }
+
+    rule DebugListPlaces(cs:dyn2::ConfStructure) {
+        alternative {
+            internal {
+                cs -:dyn2::internal_nodes-> n:PetriNetNode;
+                modify { exec(print("internal ")|pn::DebugPrintPetriNetNode(n)|print("\n"));}
+            }
+            interface {
+                cs -e1:dyn2::interface_nodes-> n:PetriNetNode;
+                modify { exec(print("interface ")|pn::DebugPrintPetriNetNode(n)|print("\n"));}
+            }
+        }
+        modify {}
+    }
+}

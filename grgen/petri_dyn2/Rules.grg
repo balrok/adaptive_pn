@@ -1,0 +1,6 @@
+#using "../general/Id.gm"
+#using "../petri/PetriModel.gm"
+#using "../petri_dyn2/Dyn2Model.gm"
+#include "../general/Rules.grg"
+#include "../petri/RulesWithoutModel.grg"
+#include "../petri_dyn2/RulesWithoutModel.grg"

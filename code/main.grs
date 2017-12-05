@@ -1,0 +1,43 @@
+new pn:PetriNet(id="main")
+new net:Page(id="main")
+new pn -:pages-> net
+
+new wait:Place(id="wait")
+new ready:Place(id="ready")
+new full:Place(id="coffee full")
+new refillable:Place(id="coffee refillable")
+
+new net-:places->wait
+new net-:places->ready
+new net-:places->full
+new net-:places->refillable
+
+
+
+new serve:Transition(id="serve")
+new brew:Transition(id="brew coffee")
+new refill:Transition(id="refill coffee")
+
+
+new net-:transitions->serve
+new net-:transitions->brew
+new net-:transitions->refill
+
+
+
+
+
+new ready-:outArc->serve
+new wait-:outArc->brew
+new full-:outArc->brew
+new refillable-:outArc->refill
+new serve-:inArc->wait
+new brew-:inArc->ready
+new brew-:inArc->refillable
+new refill-:inArc->full
+
+
+new tok1:Token
+new tok2:Token
+new wait-:tokens->tok1
+new full-:tokens->tok2

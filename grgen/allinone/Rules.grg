@@ -1,0 +1,43 @@
+#using "../general/Id.gm"
+
+// context
+#using "../context/ContextDependencyModel.gm"
+#using "../context2petri/TransformContext2PetriModel.gm"
+
+// bool
+#using "../bool/BoolModel.gm"
+
+// petri
+#using "../petri/PetriModel.gm"
+#using "../petri_dynamic/DynModel.gm"
+#using "../petri_dyn2/Dyn2Model.gm"
+#using "../petri_net_addition/NAModel.gm"
+#using "../inhibitortransform/InhibitorTransformModel.gm"
+#using "../pninfo/PninfoModel.gm"
+
+// circuit
+#using "../circuit/CoarseCircuitModel.gm"
+#using "../petri2circuit/TransformPetri2CircuitModel.gm"
+#using "../circuit2vhdl/TransformCircuit2VhdlModel.gm"
+#using "../vhdl/VhdlModel.gm"
+
+#include "../general/Rules.grg"
+
+// context
+#include "../context2petri/RulesWithoutModel.grg"
+#include "../context3petri/RulesWithoutModel.grg"
+
+// petri
+#include "../petri/RulesWithoutModel.grg"
+#include "../petri_dynamic/RulesWithoutModel.grg"
+#include "../petri_dynamic/RulesConvert12.grg"
+#include "../petri_dyn2/RulesWithoutModel.grg"
+#include "../petri_net_addition/RulesWithoutModel.grg"
+#include "../inhibitortransform/RulesWithoutModel.grg"
+#include "../pninfo/RulesWithoutModel.grg"
+
+// circuit
+#include "../petri2circuit/RulesWithoutModel.grg"
+#include "../circuit2vhdl/RulesWithoutModel.grg"
+#include "../vhdl2text/RulesWithoutModel.grg"
+#include "../circuit/RulesWithoutModel.grg"

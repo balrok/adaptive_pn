@@ -1,0 +1,42 @@
+new pn:PetriNet(id="milk")
+new net:Page(id="milk")
+new pn -:pages-> net
+
+new mready:Place(id="milk ready")
+new mfull:Place(id="milk full")
+new mrefillable:Place(id="milk refillable")
+new min:Place(id="IN")
+new mout:Place(id="OUT")
+
+
+new net-:places->mready
+new net-:places->mfull
+new net-:places->mrefillable
+new net-:places->min
+new net-:places->mout
+
+
+
+new mserve:Transition(id="serve")
+new addmilk:Transition(id="add-milk")
+new mrefill:Transition(id="refill milk")
+
+
+new net-:transitions->mserve
+new net-:transitions->addmilk
+new net-:transitions->mrefill
+
+
+
+new min -:outArc->addmilk
+new mserve -:inArc-> mout
+new mready -:outArc-> mserve
+new addmilk -:inArc-> mready
+new mfull -:outArc-> addmilk
+new mrefillable -:outArc-> mrefill
+new addmilk -:inArc-> mrefillable
+new mrefill -:inArc-> mfull
+
+
+new tok3:Token
+new mfull-:tokens->tok3

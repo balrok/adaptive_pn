@@ -1,0 +1,38 @@
+new pn:PetriNet(id="phil")
+new net:Page(id="phil")
+new pn -:pages-> net
+
+
+new full:Place(id="full")
+new think:Place(id="think")
+new eat:Place(id="eat")
+new fork1:Place(id="fork1")
+new fork2:Place(id="fork2")
+new net -:places-> full
+new net -:places-> think
+new net -:places-> eat 
+new net -:places-> fork1 
+new net -:places-> fork2
+
+new t1:Transition(id="t1")
+new t2:Transition(id="t2")
+new net -:transitions-> t1
+new net -:transitions-> t2
+
+new t1 -:inArc-> full
+new t1 -:inArc-> think
+new t1 -:inArc-> fork1
+new t1 -:inArc-> fork2
+
+new t2 -:inArc-> eat
+
+new think -:outArc-> t2
+new eat -:outArc-> t1
+new fork1 -:outArc-> t2
+new fork2 -:outArc-> t2
+
+
+new tok:Token()
+new fork1 -:tokens-> tok
+new tok2:Token()
+new think -:tokens-> tok2
